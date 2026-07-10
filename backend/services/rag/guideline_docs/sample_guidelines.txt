@@ -1,0 +1,23 @@
+WHO Dementia Guidelines 2023 - Risk Reduction:
+Physical activity is recommended for adults with normal cognition to reduce the risk of cognitive decline.
+A healthy, balanced diet (such as the Mediterranean diet) may be recommended to reduce the risk of cognitive decline/dementia.
+Cognitive training may be offered to older adults with normal cognition and mild cognitive impairment (MCI) to reduce the risk of cognitive decline.
+There is insufficient evidence to recommend vitamins, minerals, or dietary supplements to reduce the risk of cognitive decline.
+
+Alzheimer's Association Guidelines 2024 - Diagnosis:
+Diagnosis of Alzheimer's dementia should be based on clinical history, cognitive assessments (MMSE, MoCA), and neuroimaging.
+Brain MRI should be used to rule out other causes of dementia (such as vascular lesions or tumors) and to assess regional atrophy.
+Symmetric or asymmetric temporal lobe atrophy, particularly in the hippocampus, is a key neuroimaging biomarker for Alzheimer's disease.
+In early stages, MRI may show mild hippocampal atrophy, which progresses to generalized cerebral atrophy in moderate-to-severe stages.
+
+WHO Dementia Guidelines 2023 - Clinical Recommendation for Mild Stage:
+For patients diagnosed with mild dementia, cognitive stimulation therapy (CST) should be considered.
+Regular physical exercise, structured walking, and social engagement are recommended to preserve daily living functions.
+Clinicians should screen for comorbid conditions (such as depression, hypertension, and diabetes) that can accelerate cognitive decline.
+Caregivers of people with dementia should be provided with structured training and psychosocial support (e.g., WHO iSupport).
+
+NICE Guidelines NG97 - Dementia Care:
+Offer occupational therapy to people living with dementia to help them maintain independence in activities of daily living.
+For moderate dementia, consider non-pharmacological treatments (such as music therapy, art therapy, or reminiscence therapy) to manage behavioral symptoms.
+Acetylcholinesterase (AChE) inhibitors (such as donepezil, galantamine, and rivastigmine) are recommended for mild to moderate Alzheimer's disease.
+Memantine is recommended for moderate Alzheimer's disease if AChE inhibitors are not tolerated, or for severe Alzheimer's disease.

@@ -1,0 +1,166 @@
+[
+  {
+    "_id": "39a83c69-1738-49d7-aec3-9b9ffe85e769",
+    "doctor_id": "2eb31ef2-6d17-4f9b-ac09-b06aab87072f",
+    "patient_id": null,
+    "input_data": {
+      "patient_id": null,
+      "age": 52,
+      "gender": "male",
+      "mmse_score": 16.0,
+      "moca_score": 21.0,
+      "systolic_bp": 112,
+      "diastolic_bp": 106,
+      "has_diabetes": true,
+      "cholesterol_level": "normal",
+      "family_history_dementia": true,
+      "smoking_status": "former",
+      "alcohol_consumption": "heavy",
+      "physical_activity_level": "light",
+      "sleep_quality": "fair",
+      "bmi": 24.7,
+      "depression_history": false,
+      "education_years": 12
+    },
+    "risk_score": 60.0,
+    "risk_level": "very_high",
+    "risk_factors": [
+      {
+        "factor": "Age",
+        "value": 52,
+        "contribution": 3,
+        "explanation": "Age 50-64 carries low baseline risk."
+      },
+      {
+        "factor": "MMSE Score",
+        "value": 16.0,
+        "contribution": 20,
+        "explanation": "MMSE < 18 indicates significant cognitive impairment."
+      },
+      {
+        "factor": "MoCA Score",
+        "value": 21.0,
+        "contribution": 10,
+        "explanation": "MoCA < 26 suggests mild cognitive impairment."
+      },
+      {
+        "factor": "Family History",
+        "value": true,
+        "contribution": 10,
+        "explanation": "First-degree relative with dementia increases risk ~1.7x."
+      },
+      {
+        "factor": "Diabetes",
+        "value": true,
+        "contribution": 7,
+        "explanation": "Type 2 diabetes increases dementia risk ~1.5x (Livingston 2020)."
+      },
+      {
+        "factor": "Smoking (Former)",
+        "value": "former",
+        "contribution": 3,
+        "explanation": "Former smoking carries residual risk."
+      },
+      {
+        "factor": "Alcohol",
+        "value": "heavy",
+        "contribution": 7,
+        "explanation": "Heavy alcohol use is a significant dementia risk factor."
+      }
+    ],
+    "protective_factors": [],
+    "trace_id": "NA-D60CE781871D",
+    "created_at": "2026-07-09 18:15:26.493618+00:00"
+  },
+  {
+    "_id": "dd6eeed2-63ab-43b2-ba29-2cd8fbc01734",
+    "doctor_id": "2eb31ef2-6d17-4f9b-ac09-b06aab87072f",
+    "patient_id": null,
+    "input_data": {
+      "patient_id": null,
+      "age": 52,
+      "gender": "male",
+      "mmse_score": 16.0,
+      "moca_score": 21.0,
+      "systolic_bp": 112,
+      "diastolic_bp": 106,
+      "has_diabetes": true,
+      "cholesterol_level": "high",
+      "family_history_dementia": true,
+      "smoking_status": "current",
+      "alcohol_consumption": "heavy",
+      "physical_activity_level": "sedentary",
+      "sleep_quality": "poor",
+      "bmi": 24.7,
+      "depression_history": false,
+      "education_years": 12
+    },
+    "risk_score": 80.0,
+    "risk_level": "very_high",
+    "risk_factors": [
+      {
+        "factor": "Age",
+        "value": 52,
+        "contribution": 3,
+        "explanation": "Age 50-64 carries low baseline risk."
+      },
+      {
+        "factor": "MMSE Score",
+        "value": 16.0,
+        "contribution": 20,
+        "explanation": "MMSE < 18 indicates significant cognitive impairment."
+      },
+      {
+        "factor": "MoCA Score",
+        "value": 21.0,
+        "contribution": 10,
+        "explanation": "MoCA < 26 suggests mild cognitive impairment."
+      },
+      {
+        "factor": "Family History",
+        "value": true,
+        "contribution": 10,
+        "explanation": "First-degree relative with dementia increases risk ~1.7x."
+      },
+      {
+        "factor": "Diabetes",
+        "value": true,
+        "contribution": 7,
+        "explanation": "Type 2 diabetes increases dementia risk ~1.5x (Livingston 2020)."
+      },
+      {
+        "factor": "Cholesterol",
+        "value": "high",
+        "contribution": 4,
+        "explanation": "High cholesterol is associated with increased dementia risk."
+      },
+      {
+        "factor": "Smoking",
+        "value": "current",
+        "contribution": 8,
+        "explanation": "Current smoking increases dementia risk ~1.6x."
+      },
+      {
+        "factor": "Alcohol",
+        "value": "heavy",
+        "contribution": 7,
+        "explanation": "Heavy alcohol use is a significant dementia risk factor."
+      },
+      {
+        "factor": "Physical Inactivity",
+        "value": "sedentary",
+        "contribution": 6,
+        "explanation": "Physical inactivity increases dementia risk ~1.4x."
+      },
+      {
+        "factor": "Poor Sleep",
+        "value": "poor",
+        "contribution": 5,
+        "explanation": "Poor sleep quality is associated with increased amyloid burden."
+      }
+    ],
+    "protective_factors": [],
+    "trace_id": "NA-7CCD576FB1CF",
+    "created_at": "2026-07-09 18:15:56.966044+00:00"
+  }
+]
