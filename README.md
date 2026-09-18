@@ -12,11 +12,16 @@ NeuroAssist AI v2 is a secure, clinician-only platform for Alzheimer's disease a
 
 - **4-class MRI classification**: Non-Demented, Very Mild, Mild, Moderate
   - ⚠️ Severe Dementia is NOT supported by current training data
-- **Explainable AI**: Grad-CAM, Grad-CAM++, HiResCAM, Integrated Gradients, Guided Backprop
+- **Class Probability Distribution**: Real-time softmax probability bars across all 4 stages with winner highlighting
+- **Explainable AI (XAI)**:
+  - **Grad-CAM**: Macro convolutional attention localization (`layer4[1].conv2`)
+  - **Grad-CAM++**: Focal, higher-order gradient-weighted feature attribution
+  - **Integrated Gradients**: Captum path-integrated pixel-level attribution with black baseline
+  - **Brain-Region Analysis**: Quantitative 2D image-space spatial attribution across 8 canonical anatomical regions (Hippocampus, Entorhinal Cortex, Temporal, Parietal, Frontal, Occipital, Cingulate, Precuneus) with clinical notes and disclaimers
 - **Clinical risk assessment**: Transparent, rule-based scoring (NOT ML-based)
-- **RAG-grounded reports**: Gemini-generated reports citing clinical guidelines
-- **Multilingual PDF export**: English, Hindi, Marathi
-- **Medical AI assistant**: Scope-limited Gemini chatbot (Alzheimer's/dementia only)
+- **RAG-grounded reports**: Groq-generated reports citing clinical guidelines
+- **Multilingual PDF export**: English, Hindi, Marathi with embedded live XAI visual overlays and regional attribution tables
+- **Medical AI assistant**: Scope-limited Groq chatbot (Alzheimer's/dementia only)
 - **Patient record management**: Longitudinal tracking and trend analysis
 - **Audit trail**: Every prediction and report access is logged
 
@@ -29,8 +34,8 @@ NeuroAssist AI v2 is a secure, clinician-only platform for Alzheimer's disease a
 | Frontend | React 19 + TypeScript + Vite + Tailwind CSS + Material UI |
 | Backend | FastAPI + Uvicorn + Pydantic + Motor (async MongoDB) |
 | AI/ML | PyTorch + torchvision + timm + pytorch-grad-cam + Captum |
-| LLM | **Google Gemini API ONLY** (no Groq/OpenAI/Anthropic) |
-| RAG | FAISS + Sentence-Transformers + LangChain |
+| LLM | **Groq API** (Configurable via GROQ_API_KEY & GROQ_MODEL) |
+| RAG | FAISS + Sentence-Transformers |
 | Database | MongoDB (Atlas or local) |
 | PDF | ReportLab + Jinja2 |
 
@@ -70,7 +75,7 @@ neuroassist-ai-v2/
 git clone <repo-url>
 cd neuroassist-ai-v2
 cp .env.example .env
-# Edit .env: set JWT_SECRET_KEY, GEMINI_API_KEY, MONGODB_URI
+# Edit .env or .env.local: set JWT_SECRET_KEY, GROQ_API_KEY, MONGODB_URI
 ```
 
 ### 2. Start Infrastructure
@@ -100,14 +105,26 @@ npm run dev
 # → http://localhost:5173
 ```
 
-### 5. Train Models (requires GPU + Kaggle dataset)
+### 5. Train & Evaluate Models (4-Class Alzheimer MRI Dataset)
+The ML pipeline uses the 6,400 MRI scans dataset organized into 4 clinical stages:
+- **NonDemented**: 3,200 scans (50.0%)
+- **VeryMildDemented**: 2,240 scans (35.0%)
+- **MildDemented**: 896 scans (14.0%)
+- **ModerateDemented**: 64 scans (1.0%)
+
+All scripts use repository-relative paths and can be executed from anywhere in the repository:
 ```bash
-pip install kaggle
-python ml/data/download_dataset.py
-# Run the preprocessing pipeline (applies skull-stripping approximation, intensity normalization, and subject splits):
-python ml/data/preprocess.py --input-dir ml/data/raw --output-dir ml/data/preprocessed
-# Train models:
-python ml/training/train.py --data-dir ml/data/preprocessed --save-dir ml/checkpoints
+# Generate healthy brain template (used by explainability and difference mapping):
+python ml/training/generate_healthy_template.py
+
+# Quick train a model (ResNet-18 or CNN):
+python ml/train.py --arch resnet18 --epochs 10 --batch_size 32
+
+# Evaluate best checkpoint on test set:
+python ml/evaluate.py --checkpoint ml/checkpoints/best_model.pt
+
+# Run experiment levers (A through E):
+python ml/run_experiments.py --lever b
 ```
 
 ---
@@ -116,7 +133,7 @@ python ml/training/train.py --data-dir ml/data/preprocessed --save-dir ml/checkp
 
 1. **Doctor-only**: No patient-facing routes. Login says "Clinician Portal."
 2. **No fake data**: If the model isn't trained, the UI shows "Model not loaded" — never mock predictions.
-3. **Gemini only**: Zero imports of Groq, OpenAI, or Anthropic anywhere.
+3. **Groq LLM**: Official Groq SDK provider abstraction powering the medical assistant and clinical reports.
 4. **Rule-based risk**: Clinical risk assessment is explicitly labeled as rule-based, not ML.
 5. **Audit trail**: Every prediction and report access is logged with trace IDs.
 6. **Regulatory disclaimers**: Visible on every clinical output screen and report.

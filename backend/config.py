@@ -27,7 +27,11 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 480
     jwt_refresh_token_expire_days: int = 7
 
-    # ---- Gemini (ONLY LLM provider) ----
+    # ---- Groq (LLM provider) ----
+    groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
+
+    # ---- Legacy Gemini settings (for backward compatibility) ----
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
 
@@ -64,10 +68,21 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.cors_origins.split(",")]
 
+    @property
+    def effective_groq_api_key(self) -> str:
+        """Returns the configured Groq API key, ignoring placeholders."""
+        if self.groq_api_key and not self.groq_api_key.startswith("REPLACE_") and not self.groq_api_key.startswith("YOUR_"):
+            return self.groq_api_key.strip()
+        # Fallback if Groq key (starts with gsk_) was placed in GEMINI_API_KEY
+        if self.gemini_api_key and self.gemini_api_key.startswith("gsk_"):
+            return self.gemini_api_key.strip()
+        return self.groq_api_key.strip() if self.groq_api_key else ""
+
     model_config = {
-        "env_file": ".env",
+        "env_file": (".env", ".env.local"),
         "env_file_encoding": "utf-8",
         "case_sensitive": False,
+        "extra": "ignore",
     }
 
 

@@ -1,6 +1,6 @@
 """
 NeuroAssist AI v2 — Report Generation Router
-RAG-grounded clinical reports via Gemini. Multilingual PDF export.
+RAG-grounded clinical reports via Groq. Multilingual PDF export.
 Every field populated from real computed data — no placeholder text.
 """
 
@@ -65,83 +65,51 @@ async def generate_report(
         logger.warning(f"[{trace_id}] RAG retrieval failed (non-fatal): {e}")
         rag_context = "Clinical guideline retrieval unavailable. Report generated from model output only."
 
-    # ---- Gemini Report Generation ----
+    # ---- Groq Report Generation ----
     try:
-        import google.generativeai as genai
-        model = genai.GenerativeModel(settings.gemini_model)
+        from backend.services.ai_service import (
+            generate_clinical_report_text,
+            GroqConfigurationError,
+            GroqAuthError,
+            GroqRateLimitError,
+            GroqServiceError,
+        )
 
-        lang_instruction = ""
-        if req.language != ReportLanguage.ENGLISH:
-            lang_name = {"hi": "Hindi", "mr": "Marathi"}.get(req.language.value, "English")
-            lang_instruction = f"\n\nIMPORTANT: Write the entire report in {lang_name}."
-
-        prompt = f"""Generate a clinical decision-support report for an Alzheimer's disease MRI analysis.
-
-PREDICTION DATA:
-- Predicted Stage: {prediction['predicted_class']}
-- Confidence: {prediction['confidence']:.1%}
-- Class Probabilities: {prediction['class_probabilities']}
-- Model Version: {prediction['model_version']}
-
-{f'''RISK ASSESSMENT DATA:
-- Risk Score: {risk_data['risk_score']}/100
-- Risk Level: {risk_data['risk_level']}
-- Key Risk Factors: {', '.join(f['factor'] for f in risk_data.get('risk_factors', []))}
-''' if risk_data else 'RISK ASSESSMENT: Not performed for this patient.'}
-
-CLINICAL GUIDELINES CONTEXT (cite these sources):
-{rag_context}
-
-{f'ADDITIONAL CLINICAL NOTES: {req.additional_clinical_notes}' if req.additional_clinical_notes else ''}
-
-INSTRUCTIONS:
-1. Write a structured clinical report with sections: Summary, Detailed Findings, XAI Interpretation, Risk Summary, Recommendations.
-2. Ground every clinical claim in the provided guideline context. Cite sources.
-3. Do NOT make definitive diagnoses — frame everything as decision support.
-4. Include the disclaimer: "Investigational software. Not a substitute for clinical judgment."
-5. If the predicted stage is "Moderate Demented", note that "Severe Dementia" classification is not supported by the current model.
-6. Be concise but thorough — this is for a qualified clinician, not a patient.{lang_instruction}
-
-OUTPUT FORMAT (use these exact section headers):
-## Summary
-## Detailed Findings
-## XAI Interpretation Guide
-## Risk Summary
-## Recommendations
-"""
-
-        response = model.generate_content(prompt)
-        report_text = response.text
+        report_text = generate_clinical_report_text(
+            prediction=prediction,
+            risk_data=risk_data,
+            rag_context=rag_context,
+            additional_notes=req.additional_clinical_notes,
+            language=req.language.value,
+            trace_id=trace_id,
+        )
 
         # Parse sections from the generated text
         sections = _parse_report_sections(report_text)
 
-    except Exception as e:
-        logger.error(f"[{trace_id}] Report generation failed: {type(e).__name__}: {e}")
-        error_str = str(e).lower()
-        is_auth_error = (
-            "api key" in error_str or 
-            "authentication" in error_str or 
-            "credential" in error_str or 
-            "google_application_credentials" in error_str or 
-            "defaultcredentialserror" in error_str
+    except GroqConfigurationError as e:
+        logger.error(f"[{trace_id}] Groq configuration error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Clinical report configuration error: {e}. Trace ID: {trace_id}",
         )
-
-        if is_auth_error:
-            logger.error(
-                f"[{trace_id}] Gemini credentials/auth failure: {type(e).__name__}. "
-                f"Configured API key length = {len(settings.gemini_api_key) if settings.gemini_api_key else 0}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Medical assistant configuration error — contact your administrator. Trace ID: {trace_id}",
-            )
+    except GroqAuthError as e:
+        logger.error(f"[{trace_id}] Groq authentication failure: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Clinical report configuration error: Invalid Groq API credentials. Trace ID: {trace_id}",
+        )
+    except GroqRateLimitError as e:
+        logger.warning(f"[{trace_id}] Groq rate limit reached: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Report generation rate limit reached. Please wait a moment and try again. Trace ID: {trace_id}",
+        )
+    except Exception as e:
+        logger.exception(f"[{trace_id}] Report generation failed: {type(e).__name__}: {e}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=(
-                f"Report generation via Gemini failed: {type(e).__name__}. "
-                f"Trace ID: {trace_id}"
-            ),
+            detail=f"Clinical report generation is temporarily unavailable. Trace ID: {trace_id}",
         )
 
     # ---- Build recommendations from the deterministic engine ----
@@ -252,7 +220,7 @@ async def list_reports(
 
 
 def _parse_report_sections(text: str) -> dict:
-    """Parse the Gemini-generated report into sections."""
+    """Parse the clinical report markdown into sections."""
     sections = {
         "summary": "",
         "detailed_findings": "",

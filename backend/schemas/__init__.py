@@ -92,9 +92,44 @@ class DoctorProfile(BaseModel):
 # MRI / Prediction Schemas
 # ========================================
 
+class BrainRegionAttribution(BaseModel):
+    region_name: str
+    attribution_level: str  # "High attribution", "Moderate attribution", "Lower attribution"
+    attribution_score: float
+    clinical_note: Optional[str] = None
+
+
+class BrainRegionAnalysis(BaseModel):
+    regions: List[BrainRegionAttribution]
+    is_estimated: bool = True
+    methodology: str = (
+        "Estimated image-space anatomical localization based on canonical 2D axial brain template mapping. "
+        "Not a 3D clinical volumetric segmentation."
+    )
+    disclaimer: str = (
+        "Brain-region attribution represents model attention/attribution and is not equivalent to "
+        "a confirmed anatomical lesion or clinical diagnosis."
+    )
+
+
+class XAIVisualization(BaseModel):
+    heatmap_base64: Optional[str] = None
+    overlay_base64: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ExplainabilityData(BaseModel):
+    grad_cam: Optional[XAIVisualization] = None
+    grad_cam_plus_plus: Optional[XAIVisualization] = None
+    integrated_gradients: Optional[XAIVisualization] = None
+    hirescam: Optional[XAIVisualization] = None
+    brain_regions: Optional[BrainRegionAnalysis] = None
+
+
 class PredictionResponse(BaseModel):
     prediction_id: str
     predicted_class: DementiaStage
+    predicted_class_index: Optional[int] = None
     confidence: float = Field(..., ge=0.0, le=1.0, description="Calibrated confidence score")
     class_probabilities: Dict[str, float]
     model_version: str
@@ -104,6 +139,8 @@ class PredictionResponse(BaseModel):
     trace_id: str
     mri_file_id: str
     xai_overlays: Optional[Dict[str, str]] = None
+    explainability: Optional[ExplainabilityData] = None
+    brain_regions: Optional[BrainRegionAnalysis] = None
     disclaimer: str = (
         "Investigational software. Not a substitute for clinical judgment. "
         "Not FDA/CE cleared. This prediction is for decision-support purposes only."
@@ -123,6 +160,7 @@ class PredictionRecord(BaseModel):
     mri_file_id: str
     mri_file_path: str
     predicted_class: str
+    predicted_class_index: Optional[int] = None
     confidence: float
     class_probabilities: Dict[str, float]
     model_version: str
@@ -131,6 +169,8 @@ class PredictionRecord(BaseModel):
     trace_id: str
     created_at: datetime
     xai_overlays: Optional[Dict[str, str]] = None
+    explainability: Optional[Dict[str, Any]] = None
+    brain_regions: Optional[Dict[str, Any]] = None
 
 
 # ========================================
@@ -255,13 +295,16 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     session_id: Optional[str] = None
     language: ReportLanguage = ReportLanguage.ENGLISH
+    conversation: Optional[List[Dict[str, str]]] = None
 
 
 class ChatResponse(BaseModel):
     session_id: str
     reply: str
+    answer: Optional[str] = None
     is_on_topic: bool
     citations: List[Dict[str, str]] = []
+    usage: Optional[Dict[str, Any]] = None
     trace_id: str
     timestamp: datetime
 

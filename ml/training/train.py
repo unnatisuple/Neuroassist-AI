@@ -30,7 +30,7 @@ ARCHITECTURES = [
     "hybrid_cnn_swin",
 ]
 
-CLASS_NAMES = ["Mild_Demented", "Moderate_Demented", "Non_Demented", "Very_Mild_Demented"]
+CLASS_NAMES = ["MildDemented", "ModerateDemented", "NonDemented", "VeryMildDemented"]
 NUM_CLASSES = 4
 IMG_SIZE = 224
 BATCH_SIZE = 32

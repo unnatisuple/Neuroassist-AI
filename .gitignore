@@ -32,6 +32,7 @@ frontend/.vite/
 # ---- Environment ----
 .env
 .env.local
+.env*.local
 .env.production
 !.env.example
 
@@ -48,6 +49,10 @@ ml/checkpoints/*.pth
 ml/checkpoints/*.onnx
 ml/data/raw/
 ml/data/processed/
+ml/data/preprocessed/MildDemented/
+ml/data/preprocessed/ModerateDemented/
+ml/data/preprocessed/NonDemented/
+ml/data/preprocessed/VeryMildDemented/
 ml/reports/*.png
 ml/reports/*.json
 

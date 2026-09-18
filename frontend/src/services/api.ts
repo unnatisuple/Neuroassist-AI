@@ -114,7 +114,8 @@ export const chatbotAPI = {
     message: string;
     session_id?: string;
     language?: string;
-  }) => api.post('/chatbot/message', data),
+    conversation?: Array<{ role: string; content: string }>;
+  }) => api.post('/chat', data),
 
   listSessions: () => api.get('/chatbot/sessions'),
 };

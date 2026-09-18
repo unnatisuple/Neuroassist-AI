@@ -14,7 +14,15 @@ def build_model(architecture: str, num_classes: int = 4) -> nn.Module:
     """
     arch = architecture.lower()
 
-    if arch == "resnet50":
+    if arch in ["resnet", "resnet18"]:
+        from ml.model import AlzheimerTransferModel
+        return AlzheimerTransferModel(backbone_name="resnet18", num_classes=num_classes, pretrained=False)
+
+    elif arch in ["cnn", "alzheimercnn"]:
+        from ml.model import AlzheimerCNN
+        return AlzheimerCNN(num_classes=num_classes)
+
+    elif arch == "resnet50":
         import torchvision.models as models
         model = models.resnet50(weights=None)
         model.fc = nn.Linear(model.fc.in_features, num_classes)

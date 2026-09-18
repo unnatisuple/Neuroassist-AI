@@ -5,7 +5,9 @@ Every field is populated from real computed data — no placeholder text.
 Regulatory disclaimer appears on every page.
 """
 
+import html
 import os
+import re
 from datetime import datetime
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -25,6 +27,44 @@ DISCLAIMER = (
     "decision-support purposes only. All clinical decisions should be made "
     "by the treating physician."
 )
+
+
+def format_for_reportlab(text: str) -> str:
+    """
+    Safely converts arbitrary text / markdown / LLM strings into valid ReportLab Paragraph XML.
+    Handles unclosed tags (e.g. <br>), markdown bullets, markdown tables, bold/italic, and entity escaping.
+    """
+    if not text:
+        return ""
+    s = str(text).strip()
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    # Normalize HTML br tags to standard newline
+    s = re.sub(r'<br\s*/?>', '\n', s, flags=re.IGNORECASE)
+    
+    formatted_lines = []
+    for line in s.split("\n"):
+        line = line.strip()
+        if not line:
+            formatted_lines.append("")
+            continue
+        # Skip markdown table dividers like |---|---|
+        if re.match(r"^\|?\s*[-:]+[-|\s:]*\|?$", line):
+            continue
+        # Format markdown table rows like | col1 | col2 |
+        if line.startswith("|") and line.endswith("|"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            line = " — ".join([c for c in cells if c])
+        # Escape XML entities (&, <, >)
+        line = html.escape(line)
+        # Convert markdown **bold** to <b>bold</b>
+        line = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', line)
+        # Convert markdown *italic* to <i>italic</i>
+        line = re.sub(r'(?<!\*)\*([^*]+?)\*(?!\*)', r'<i>\1</i>', line)
+        # Convert markdown `code` to <i>code</i>
+        line = re.sub(r'`([^`]+?)`', r'<i>\1</i>', line)
+        formatted_lines.append(line)
+        
+    return "<br/>".join(formatted_lines)
 
 
 def generate_pdf(report: dict, doctor: dict, prediction: dict = None) -> str:
@@ -81,9 +121,17 @@ def generate_pdf(report: dict, doctor: dict, prediction: dict = None) -> str:
     elements.append(Spacer(1, 12))
 
     # ---- Report Metadata ----
+    created_dt = report.get("created_at") or datetime.now()
+    if isinstance(created_dt, str):
+        try:
+            created_dt = datetime.fromisoformat(created_dt.replace("Z", "+00:00"))
+        except Exception:
+            pass
+    created_str = created_dt.strftime("%Y-%m-%d %H:%M UTC") if hasattr(created_dt, "strftime") else str(created_dt)
+
     meta_data = [
         ["Report ID:", report["_id"][:12]],
-        ["Generated:", report.get("created_at", datetime.now()).strftime("%Y-%m-%d %H:%M UTC")],
+        ["Generated:", created_str],
         ["Clinician:", doctor.get("full_name", "N/A")],
         ["Specialization:", doctor.get("specialization", "N/A")],
         ["License #:", doctor.get("medical_license_number", "N/A")],
@@ -109,25 +157,25 @@ def generate_pdf(report: dict, doctor: dict, prediction: dict = None) -> str:
     # ---- Summary Section ----
     if report.get("summary"):
         elements.append(Paragraph("Summary", subtitle_style))
-        elements.append(Paragraph(report["summary"].replace("\n", "<br/>"), body_style))
+        elements.append(Paragraph(format_for_reportlab(report["summary"]), body_style))
         elements.append(Spacer(1, 10))
 
     # ---- Detailed Findings ----
     if report.get("detailed_findings"):
         elements.append(Paragraph("Detailed Findings", subtitle_style))
-        elements.append(Paragraph(report["detailed_findings"].replace("\n", "<br/>"), body_style))
+        elements.append(Paragraph(format_for_reportlab(report["detailed_findings"]), body_style))
         elements.append(Spacer(1, 10))
 
     # ---- XAI Interpretation ----
     if report.get("xai_interpretation"):
         elements.append(Paragraph("Explainable AI Interpretation Guide", subtitle_style))
-        elements.append(Paragraph(report["xai_interpretation"].replace("\n", "<br/>"), body_style))
+        elements.append(Paragraph(format_for_reportlab(report["xai_interpretation"]), body_style))
         elements.append(Spacer(1, 10))
 
     # ---- Risk Summary ----
     if report.get("risk_summary"):
         elements.append(Paragraph("Risk Assessment Summary", subtitle_style))
-        elements.append(Paragraph(report["risk_summary"].replace("\n", "<br/>"), body_style))
+        elements.append(Paragraph(format_for_reportlab(report["risk_summary"]), body_style))
         elements.append(Spacer(1, 10))
 
     # ---- Recommendations ----
@@ -139,8 +187,11 @@ def generate_pdf(report: dict, doctor: dict, prediction: dict = None) -> str:
         if recs.get("specialists"):
             elements.append(Paragraph("<b>Recommended Specialists:</b>", body_style))
             for spec in recs["specialists"]:
+                spec_name = html.escape(str(spec.get('name', '')))
+                spec_spec = html.escape(str(spec.get('specialty', '')))
+                spec_rat = format_for_reportlab(spec.get('rationale', ''))
                 elements.append(Paragraph(
-                    f"• <b>{spec['name']}</b> ({spec['specialty']}): {spec['rationale']}",
+                    f"• <b>{spec_name}</b> ({spec_spec}): {spec_rat}",
                     body_style,
                 ))
             elements.append(Spacer(1, 6))
@@ -149,8 +200,11 @@ def generate_pdf(report: dict, doctor: dict, prediction: dict = None) -> str:
         if recs.get("exercises"):
             elements.append(Paragraph("<b>Recommended Activities:</b>", body_style))
             for ex in recs["exercises"]:
+                ex_name = html.escape(str(ex.get('name', '')))
+                ex_desc = format_for_reportlab(ex.get('description', ''))
+                ex_freq = html.escape(str(ex.get('frequency', '')))
                 elements.append(Paragraph(
-                    f"• <b>{ex['name']}</b>: {ex['description']} — {ex['frequency']}",
+                    f"• <b>{ex_name}</b>: {ex_desc} — {ex_freq}",
                     body_style,
                 ))
             elements.append(Spacer(1, 6))
@@ -159,7 +213,7 @@ def generate_pdf(report: dict, doctor: dict, prediction: dict = None) -> str:
         if recs.get("caregiver_guidance"):
             elements.append(Paragraph("<b>Caregiver Guidance:</b>", body_style))
             for g in recs["caregiver_guidance"]:
-                elements.append(Paragraph(f"• {g}", body_style))
+                elements.append(Paragraph(f"• {format_for_reportlab(g)}", body_style))
 
         elements.append(Spacer(1, 10))
 
@@ -179,7 +233,8 @@ def generate_pdf(report: dict, doctor: dict, prediction: dict = None) -> str:
             methods = [
                 ("gradcam", "Grad-CAM"),
                 ("gradcam_plus_plus", "Grad-CAM++"),
-                ("hirescam", "HiResCAM")
+                ("integrated_gradients", "Integrated Gradients"),
+                ("hirescam", "HiResCAM"),
             ]
             
             for key, label in methods:
@@ -192,18 +247,19 @@ def generate_pdf(report: dict, doctor: dict, prediction: dict = None) -> str:
                     tf.close()
                     temp_files.append(tf.name)
                     
-                    # 45mm x 45mm image flowable
-                    rl_img = RLImage(tf.name, width=45*mm, height=45*mm)
+                    # Responsive image flowable
+                    rl_img = RLImage(tf.name, width=38*mm, height=38*mm)
                     row_images.append(rl_img)
-                    row_labels.append(Paragraph(f"<b>{label}</b>", body_style))
+                    row_labels.append(Paragraph(f"<b>{label}</b>", header_style))
             
             if row_images:
-                # Add labels row and images row to a Table
-                xai_table = Table([row_labels, row_images], colWidths=[55*mm, 55*mm, 55*mm])
+                col_w = (170 * mm) / len(row_images)
+                col_widths = [col_w] * len(row_images)
+                xai_table = Table([row_labels, row_images], colWidths=col_widths)
                 xai_table.setStyle(TableStyle([
                     ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                 ]))
                 elements.append(xai_table)
                 elements.append(Spacer(1, 10))
@@ -211,13 +267,48 @@ def generate_pdf(report: dict, doctor: dict, prediction: dict = None) -> str:
         except Exception as e:
             logger.warning(f"Failed to embed XAI images in PDF: {e}")
 
+    # ---- Brain Region Attribution Summary ----
+    brain_regions = prediction.get("brain_regions") if prediction else None
+    if brain_regions and isinstance(brain_regions, dict) and brain_regions.get("regions"):
+        elements.append(Paragraph("Estimated 2D Axial Brain Region Attribution", subtitle_style))
+        region_rows = [["Brain Region", "Attribution Status", "Share", "Clinical Relevance"]]
+        for r in brain_regions["regions"][:6]:
+            region_rows.append([
+                r.get("region_name", "N/A"),
+                r.get("attribution_level", "N/A"),
+                f"{r.get('attribution_score', 0):.1%}",
+                Paragraph(format_for_reportlab(r.get("clinical_note", "N/A")), body_style),
+            ])
+        br_table = Table(region_rows, colWidths=[32*mm, 35*mm, 20*mm, 83*mm])
+        br_table.setStyle(TableStyle([
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8eaf6")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1a237e")),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#c5cae9")),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(br_table)
+        elements.append(Spacer(1, 4))
+        elements.append(Paragraph(
+            "Note: Brain-region attribution represents model attention/attribution based on 2D image-space localization "
+            "and is not equivalent to a confirmed anatomical lesion or clinical diagnosis.",
+            disclaimer_style,
+        ))
+        elements.append(Spacer(1, 10))
+
     # ---- Citations ----
     citations = report.get("rag_citations", [])
     if citations:
         elements.append(Paragraph("Evidence Sources", subtitle_style))
         for i, cite in enumerate(citations, 1):
+            src_str = html.escape(str(cite.get('source', 'Unknown')))
+            exc_str = html.escape(str(cite.get('excerpt', '')[:150]))
             elements.append(Paragraph(
-                f"[{i}] <b>{cite.get('source', 'Unknown')}</b>: {cite.get('excerpt', '')[:150]}...",
+                f"[{i}] <b>{src_str}</b>: {exc_str}...",
                 body_style,
             ))
         elements.append(Spacer(1, 10))

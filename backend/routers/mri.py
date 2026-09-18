@@ -70,12 +70,11 @@ def load_model(model_path: str) -> bool:
             _model_checksum = file_hash.hexdigest()[:16]
 
         checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
-
         if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-            _model_version = checkpoint.get("version", "unknown")
+            _model_version = checkpoint.get("version") or checkpoint.get("args", {}).get("tag", "v2_checkpoint")
             # Architecture must be reconstructed from checkpoint metadata
-            arch_name = checkpoint.get("architecture", "unknown")
-            num_classes = checkpoint.get("num_classes", 4)
+            arch_name = checkpoint.get("architecture") or checkpoint.get("model_type") or checkpoint.get("args", {}).get("model", "resnet")
+            num_classes = checkpoint.get("num_classes") or len(checkpoint.get("class_names", [])) or 4
 
             from backend.services.model_service import build_model
             _model = build_model(arch_name, num_classes)
@@ -221,17 +220,15 @@ async def predict_dementia_stage(
             predicted_class = CLASS_NAMES[predicted_idx]
             confidence = float(probabilities[predicted_idx])
 
-            # Pre-generate explainability heatmaps (non-fatal)
+            # Pre-generate explainability heatmaps and brain region analysis (non-fatal)
+            explainability_res = {}
+            brain_regions_res = None
             try:
-                from backend.services.explainability_service import generate_explanation
-                for method in ("gradcam", "gradcam++", "hirescam"):
-                    try:
-                        res = generate_explanation(model, temp_path, method, CLASS_NAMES)
-                        key_prefix = method.replace("++", "_plus_plus")
-                        xai_overlays[f"{key_prefix}_heatmap"] = res["heatmap_base64"]
-                        xai_overlays[f"{key_prefix}_overlay"] = res["overlay_base64"]
-                    except Exception as ex:
-                        logger.warning(f"Failed to pre-compute {method} overlay: {ex}")
+                from backend.services.explainability_service import generate_all_explainability
+                xai_bundle = generate_all_explainability(model, temp_path, predicted_idx)
+                xai_overlays = xai_bundle.get("xai_overlays", {})
+                explainability_res = xai_bundle.get("explainability", {})
+                brain_regions_res = xai_bundle.get("brain_regions")
             except Exception as e:
                 logger.warning(f"Failed to pre-compute explainability overlays: {e}")
 
@@ -255,6 +252,7 @@ async def predict_dementia_stage(
         "mri_file_id": file_id,
         "mri_file_path": file_path,
         "predicted_class": predicted_class.value,
+        "predicted_class_index": predicted_idx,
         "confidence": confidence,
         "class_probabilities": class_probs,
         "model_version": _model_version,
@@ -263,6 +261,8 @@ async def predict_dementia_stage(
         "trace_id": trace_id,
         "created_at": datetime.now(timezone.utc),
         "xai_overlays": xai_overlays,
+        "explainability": explainability_res,
+        "brain_regions": brain_regions_res,
     }
 
     predictions = get_predictions_collection()
@@ -277,6 +277,7 @@ async def predict_dementia_stage(
     return PredictionResponse(
         prediction_id=prediction_id,
         predicted_class=predicted_class,
+        predicted_class_index=predicted_idx,
         confidence=round(confidence, 4),
         class_probabilities=class_probs,
         model_version=_model_version,
@@ -286,6 +287,8 @@ async def predict_dementia_stage(
         trace_id=trace_id,
         mri_file_id=file_id,
         xai_overlays=xai_overlays,
+        explainability=explainability_res,
+        brain_regions=brain_regions_res,
     )
 
 
@@ -324,8 +327,16 @@ async def explain_prediction(
         start_time = time.perf_counter()
         from backend.services.explainability_service import generate_explanation
         from backend.services.encryption_service import decrypted_temp_file
+        target_idx = pred.get("predicted_class_index")
+        if target_idx is None:
+            pred_class_name = pred.get("predicted_class")
+            for idx, c in enumerate(CLASS_NAMES):
+                if c.value == pred_class_name:
+                    target_idx = idx
+                    break
+
         with decrypted_temp_file(file_path) as temp_path:
-            result = generate_explanation(model, temp_path, method, CLASS_NAMES)
+            result = generate_explanation(model, temp_path, method, CLASS_NAMES, target_class_idx=target_idx)
         latency = (time.perf_counter() - start_time) * 1000
 
         return ExplainabilityResponse(
@@ -443,13 +454,16 @@ async def list_predictions(
             "prediction_id": doc["_id"],
             "mri_file_id": doc.get("mri_file_id"),
             "predicted_class": doc.get("predicted_class"),
+            "predicted_class_index": doc.get("predicted_class_index"),
             "confidence": doc.get("confidence"),
             "class_probabilities": doc.get("class_probabilities"),
             "model_version": doc.get("model_version"),
             "created_at": doc.get("created_at"),
             "patient_id": doc.get("patient_id"),
             "report_id": report["_id"] if report else None,
-            "xai_overlays": doc.get("xai_overlays", {})
+            "xai_overlays": doc.get("xai_overlays", {}),
+            "explainability": doc.get("explainability"),
+            "brain_regions": doc.get("brain_regions"),
         })
 
     return {"predictions": result}

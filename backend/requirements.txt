@@ -2,18 +2,18 @@
 # ==========================================
 
 # ---- Core Framework ----
-fastapi==0.115.12
-uvicorn[standard]==0.34.3
-pydantic==2.11.3
-pydantic-settings==2.9.1
-python-multipart==0.0.20
-python-jose[cryptography]==3.4.0
-passlib[bcrypt]==1.7.4
-bcrypt==4.3.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.11.0
+pydantic-settings>=2.9.0
+python-multipart>=0.0.20
+python-jose[cryptography]>=3.4.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.3.0
 
 # ---- Database ----
-motor==3.7.0
-pymongo==4.12.1
+motor>=3.7.0
+pymongo>=4.12.0
 
 # ---- AI/ML ----
 torch>=2.0.0
@@ -28,11 +28,8 @@ pandas>=2.0.0
 scikit-learn>=1.3.0
 albumentations>=1.3.0
 
-# ---- LLM (Gemini ONLY — no Groq/OpenAI/Anthropic) ----
-google-generativeai>=0.8.0
-langchain>=0.3.0
-langchain-google-genai>=2.0.0
-langchain-community>=0.3.0
+# ---- LLM (Groq Provider) ----
+groq>=0.11.0
 
 # ---- RAG ----
 faiss-cpu>=1.7.4

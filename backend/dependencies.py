@@ -77,6 +77,17 @@ async def require_verified_doctor(
     return doctor
 
 
+async def get_optional_doctor(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> Optional[Dict[str, Any]]:
+    """Extract authenticated doctor if token provided, else None."""
+    try:
+        return await get_current_doctor(request, credentials)
+    except Exception:
+        return None
+
+
 async def require_admin(
     doctor: Dict[str, Any] = Depends(get_current_doctor),
 ) -> Dict[str, Any]:

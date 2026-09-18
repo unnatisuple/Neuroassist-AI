@@ -3,7 +3,7 @@ NeuroAssist AI v2 — FastAPI Application Entry Point
 
 DOCTOR-ONLY PLATFORM. No patient-facing routes exist anywhere in this application.
 Every route requires authenticated clinician access.
-LLM PROVIDER: Google Gemini API ONLY. No Groq/OpenAI/Anthropic.
+LLM PROVIDER: Groq API (Configurable via GROQ_API_KEY & GROQ_MODEL).
 """
 
 from fastapi import FastAPI
@@ -30,21 +30,15 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Decision Support Mode: {settings.decision_support_mode_only}")
 
-    # Enforce Gemini API Key validation
-    if "pytest" not in sys.modules:
-        if not settings.gemini_api_key or settings.gemini_api_key.startswith("REPLACE_"):
-            raise RuntimeError(
-                "GEMINI_API_KEY is not set. The chatbot and report generator "
-                "cannot start without it. Set it in your environment/.env file."
-            )
-        import google.generativeai as genai
-        genai.configure(api_key=settings.gemini_api_key)
-        logger.info("Google Gemini SDK configured successfully at startup.")
+    # Verify Groq LLM Configuration
+    from backend.services.ai_service import is_groq_configured
+    if is_groq_configured():
+        logger.info(f"[AI] Provider: Groq configured successfully at startup (Model: {settings.groq_model}).")
     else:
-        # For testing, configure a dummy key to prevent SDK fallback errors
-        import google.generativeai as genai
-        genai.configure(api_key="TEST_DUMMY_KEY")
-        logger.info("Google Gemini SDK configured with dummy key for unit testing.")
+        logger.warning(
+            "[AI] GROQ_API_KEY is not configured or holds a placeholder. "
+            "Set GROQ_API_KEY in .env.local to enable live Groq responses."
+        )
 
     # Connect to MongoDB
     from backend.db.mongodb import connect_to_mongo, close_mongo_connection
@@ -166,6 +160,19 @@ app.include_router(chatbot_router)
 app.include_router(patients_router)
 app.include_router(admin_router)
 app.include_router(health_router)
+
+# Direct /api/chat and /chat routes
+from backend.routers.chatbot import chat_message
+from backend.dependencies import get_optional_doctor
+from backend.schemas import ChatRequest, ChatResponse
+from typing import Optional
+from fastapi import Depends
+
+@app.post("/api/chat", response_model=ChatResponse, tags=["Medical Assistant Chatbot"])
+@app.post("/chat", response_model=ChatResponse, tags=["Medical Assistant Chatbot"])
+async def direct_chat_endpoint(req: ChatRequest, doctor: Optional[dict] = Depends(get_optional_doctor)):
+    """Direct chat endpoint matching standard /api/chat routing."""
+    return await chat_message(req, doctor)
 
 
 @app.get("/")

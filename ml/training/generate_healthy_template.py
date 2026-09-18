@@ -9,10 +9,19 @@ def generate():
     print("NeuroAssist AI v2 — Healthy Brain Template Generator")
     print("=" * 60)
     
-    non_demented_dir = "ml/data/preprocessed/train/Non_Demented"
-    if not os.path.exists(non_demented_dir):
-        print(f"[ERROR] Non-Demented preprocessed directory not found at: {non_demented_dir}")
-        print("Please run preprocessing first: python ml/data/preprocess.py")
+    candidate_dirs = [
+        os.path.join("ml", "data", "preprocessed", "NonDemented"),
+        os.path.join("ml", "data", "preprocessed", "train", "NonDemented"),
+        os.path.join("ml", "data", "preprocessed", "train", "Non_Demented"),
+    ]
+    non_demented_dir = None
+    for cd in candidate_dirs:
+        if os.path.exists(cd):
+            non_demented_dir = cd
+            break
+
+    if non_demented_dir is None:
+        print(f"[ERROR] NonDemented directory not found in candidate paths: {candidate_dirs}")
         sys.exit(1)
         
     images = []

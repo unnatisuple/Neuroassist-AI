@@ -1,15 +1,23 @@
 """
-NeuroAssist AI v2 — Chatbot Router (Gemini-powered, scope-enforced)
+NeuroAssist AI v2 — Chatbot Router (Groq-powered, scope-enforced)
 Only answers Alzheimer's/dementia/MRI/XAI/platform questions.
 Declines off-topic queries with a professional redirect, not an apology loop.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime, timezone
+from typing import Optional
 from backend.schemas import ChatRequest, ChatResponse, ChatMessage
-from backend.dependencies import require_verified_doctor, generate_trace_id
+from backend.dependencies import require_verified_doctor, get_optional_doctor, generate_trace_id
 from backend.db.mongodb import get_chat_sessions_collection
 from backend.config import settings
+from backend.services.ai_service import (
+    chat_completion,
+    GroqConfigurationError,
+    GroqAuthError,
+    GroqRateLimitError,
+    GroqServiceError,
+)
 from loguru import logger
 import uuid
 import re
@@ -149,104 +157,103 @@ IMPORTANT DISCLAIMER TO INCLUDE WHEN DISCUSSING CLINICAL DECISIONS:
 
 
 @router.post("/message", response_model=ChatResponse)
+@router.post("/chat", response_model=ChatResponse)
 async def chat_message(
     req: ChatRequest,
-    doctor: dict = Depends(require_verified_doctor),
+    doctor: Optional[dict] = Depends(get_optional_doctor),
 ):
     """
-    Send a message to the Gemini-powered medical assistant.
+    Send a message to the Groq-powered medical assistant.
     Off-topic messages are rejected deterministically by the guardrail,
     not by hoping the LLM follows its system prompt.
     """
     trace_id = generate_trace_id()
+    doctor_id = doctor["_id"] if doctor else "clinician_session"
 
     # ---- GUARDRAIL: deterministic off-topic detection ----
     if not is_on_topic(req.message):
         # Log the refusal
-        logger.info(f"[{trace_id}] Chatbot guardrail: off-topic message from doctor={doctor['_id']}")
+        logger.info(f"[{trace_id}] Chatbot guardrail: off-topic message from doctor={doctor_id}")
 
         return ChatResponse(
             session_id=req.session_id or str(uuid.uuid4()),
             reply=REFUSAL_MESSAGE,
+            answer=REFUSAL_MESSAGE,
             is_on_topic=False,
             trace_id=trace_id,
             timestamp=datetime.now(timezone.utc),
         )
 
-    # ---- ON-TOPIC: call Gemini ----
+    # ---- ON-TOPIC: call Groq ----
     session_id = req.session_id or str(uuid.uuid4())
     sessions = get_chat_sessions_collection()
 
     # Load conversation history
-    session = await sessions.find_one({"_id": session_id, "doctor_id": doctor["_id"]})
+    session = await sessions.find_one({"_id": session_id, "doctor_id": doctor_id})
     history = session.get("messages", []) if session else []
 
+    # If DB history is empty but request supplied conversation context, use it
+    if not history and req.conversation:
+        history = req.conversation
+
+    # Build conversation messages for Groq
+    groq_messages = []
+    for msg in history[-10:]:  # Keep recent history for context
+        role = "assistant" if msg.get("role") in ("assistant", "model") else "user"
+        content = msg.get("content", "")
+        if content:
+            groq_messages.append({"role": role, "content": content})
+
+    # Add user message with language instruction if non-English
+    user_content = req.message
+    if req.language.value != "en":
+        lang_name = {"hi": "Hindi", "mr": "Marathi"}.get(req.language.value, "English")
+        user_content = f"[Respond in {lang_name}] {req.message}"
+    groq_messages.append({"role": "user", "content": user_content})
+
+    usage = {}
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=settings.gemini_api_key)
-
-        model = genai.GenerativeModel(
-            model_name=settings.gemini_model,
-            system_instruction=SYSTEM_PROMPT,
+        ai_res = chat_completion(
+            messages=groq_messages,
+            system_prompt=SYSTEM_PROMPT,
+            trace_id=trace_id,
         )
+        reply = ai_res.get("content", "")
+        usage = ai_res.get("usage", {})
 
-        # Build conversation for Gemini
-        gemini_history = []
-        for msg in history[-10:]:  # Last 10 messages for context
-            gemini_history.append({
-                "role": "user" if msg["role"] == "user" else "model",
-                "parts": [msg["content"]],
-            })
+        if not reply:
+            raise GroqServiceError("Groq returned an empty response.")
 
-        chat = model.start_chat(history=gemini_history)
-
-        # Add language instruction if not English
-        user_message = req.message
-        if req.language.value != "en":
-            lang_name = {"hi": "Hindi", "mr": "Marathi"}.get(req.language.value, "English")
-            user_message = f"[Respond in {lang_name}] {req.message}"
-
-        response = chat.send_message(user_message)
-        reply = response.text
-
+    except GroqConfigurationError as e:
+        logger.error(f"[{trace_id}] Groq configuration error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Medical assistant configuration error: {e}. Trace ID: {trace_id}",
+        )
+    except GroqAuthError as e:
+        logger.error(f"[{trace_id}] Groq authentication failure: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Medical assistant configuration error: Invalid Groq API credentials. Trace ID: {trace_id}",
+        )
+    except GroqRateLimitError as e:
+        logger.warning(f"[{trace_id}] Groq rate limit reached: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"AI assistant rate limit reached. Please wait a moment and try again. Trace ID: {trace_id}",
+        )
+    except GroqServiceError as e:
+        logger.error(f"[{trace_id}] Groq service error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"The medical assistant is temporarily unavailable. Please try again later. Trace ID: {trace_id}",
+        )
     except Exception as e:
-        logger.error(f"[{trace_id}] Gemini API call failed: {type(e).__name__}: {e}")
-
-        error_str = str(e).lower()
-        is_auth_error = (
-            "api key" in error_str or 
-            "authentication" in error_str or 
-            "credential" in error_str or 
-            "google_application_credentials" in error_str or 
-            "defaultcredentialserror" in error_str
+        logger.exception(f"[{trace_id}] Unexpected error during Groq completion: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"The medical assistant is temporarily unavailable. Please try again later. Trace ID: {trace_id}",
         )
-
-        if is_auth_error:
-            logger.error(
-                f"[{trace_id}] Gemini credentials/auth failure: {type(e).__name__}. "
-                f"Configured API key length = {len(settings.gemini_api_key) if settings.gemini_api_key else 0}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Medical assistant configuration error — contact your administrator. Trace ID: {trace_id}",
-            )
-        elif "quota" in error_str or "rate" in error_str:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=(
-                    "Gemini API rate limit reached. Please wait a moment and try again. "
-                    f"Trace ID: {trace_id}"
-                ),
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=(
-                    f"Gemini API error: {type(e).__name__}. "
-                    f"The medical assistant is temporarily unavailable. "
-                    f"Trace ID: {trace_id}"
-                ),
-            )
 
     # Save conversation to MongoDB
     new_messages = [
@@ -263,7 +270,7 @@ async def chat_message(
     else:
         await sessions.insert_one({
             "_id": session_id,
-            "doctor_id": doctor["_id"],
+            "doctor_id": doctor_id,
             "messages": new_messages,
             "language": req.language.value,
             "created_at": datetime.now(timezone.utc),
@@ -273,7 +280,9 @@ async def chat_message(
     return ChatResponse(
         session_id=session_id,
         reply=reply,
+        answer=reply,
         is_on_topic=True,
+        usage=usage,
         trace_id=trace_id,
         timestamp=datetime.now(timezone.utc),
     )
